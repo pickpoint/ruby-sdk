@@ -11,13 +11,18 @@ concurrency:
 
 permissions:
   contents: write
+  id-token: write
 
 jobs:
+  # Auto-patch on main when HEAD is not already tagged.
+  # NOTE: pushes made with GITHUB_TOKEN do not trigger new workflows, so we
+  # must publish in this same job (cannot rely on the tag push event).
   release-main:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      id-token: write
     steps:
       - uses: actions/checkout@v5
         with:
@@ -77,23 +82,17 @@ jobs:
           git tag "v${ver}"
           git push origin HEAD:main --follow-tags
 
+      - name: Configure RubyGems credentials (OIDC)
+        if: steps.guard.outputs.skip != 'true'
+        uses: rubygems/configure-rubygems-credentials@v2.1.0
+
       - name: Build gem
         if: steps.guard.outputs.skip != 'true'
         run: gem build pickpoint.gemspec
 
       - name: Publish to RubyGems
         if: steps.guard.outputs.skip != 'true'
-        env:
-          RUBYGEMS_API_KEY: ${{ secrets.RUBYGEMS_API_KEY }}
-        run: |
-          if [ -z "${RUBYGEMS_API_KEY:-}" ]; then
-            echo "RUBYGEMS_API_KEY not set — skip gem push"
-            exit 0
-          fi
-          mkdir -p ~/.gem
-          printf -- "---\n:rubygems_api_key: %s\n" "$RUBYGEMS_API_KEY" > ~/.gem/credentials
-          chmod 0600 ~/.gem/credentials
-          gem push pickpoint-*.gem
+        run: gem push pickpoint-*.gem
 
       - name: GitHub Release
         if: steps.guard.outputs.skip != 'true'
@@ -104,11 +103,14 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+  # Manual tags (human push). GITHUB_TOKEN tag pushes from release-main do not
+  # reach here — that path publishes above.
   publish-tag:
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      id-token: write
     steps:
       - uses: actions/checkout@v5
 
@@ -128,20 +130,12 @@ jobs:
           fi
 
       - run: bundle exec rake test
-      - run: gem build pickpoint.gemspec
 
-      - name: Publish to RubyGems
-        env:
-          RUBYGEMS_API_KEY: ${{ secrets.RUBYGEMS_API_KEY }}
-        run: |
-          if [ -z "${RUBYGEMS_API_KEY:-}" ]; then
-            echo "RUBYGEMS_API_KEY not set — skip gem push"
-            exit 0
-          fi
-          mkdir -p ~/.gem
-          printf -- "---\n:rubygems_api_key: %s\n" "$RUBYGEMS_API_KEY" > ~/.gem/credentials
-          chmod 0600 ~/.gem/credentials
-          gem push pickpoint-*.gem
+      - name: Configure RubyGems credentials (OIDC)
+        uses: rubygems/configure-rubygems-credentials@v2.1.0
+
+      - run: gem build pickpoint.gemspec
+      - run: gem push pickpoint-*.gem
 
       - name: GitHub Release
         uses: softprops/action-gh-release@v2
