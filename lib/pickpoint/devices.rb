@@ -1,6 +1,5 @@
 # frozen_string_literal: true
 
-require "base64"
 require "json"
 require "uri"
 
@@ -88,7 +87,8 @@ module Pickpoint
 
     def command(uid, payload)
       path = "/v2/devices/#{URI.encode_www_form_component(uid)}/command"
-      b64 = Base64.strict_encode64(payload.to_s.b)
+      # pack("m0") = strict Base64 (no newlines); avoids the base64 gem (not default since 3.4)
+      b64 = [payload.to_s.b].pack("m0")
       raw = @t.do(
         Transport::RequestOpts.new(
           method: "POST",
