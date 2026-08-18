@@ -130,3 +130,7 @@ Pickpoint::Config.new(
 bundle install
 bundle exec rake test
 ```
+
+## Contributing
+
+Fork and open a PR against **`dev`**. [CONTRIBUTING.md](CONTRIBUTING.md).
